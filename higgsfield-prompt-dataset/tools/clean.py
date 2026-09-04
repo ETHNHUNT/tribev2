@@ -2,7 +2,13 @@ import json, re, sys, collections, unicodedata
 sys.path.insert(0, '.')
 from prose import looks_like_prompt, classify
 
-rows = json.load(open("raw_rows.json"))
+def _iter_rows():
+    with open("raw_rows.jsonl", encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                yield json.loads(line)
+
+rows = list(_iter_rows())
 
 # ---------- model normalisation ----------
 MODEL_MAP = {
@@ -38,6 +44,11 @@ MODEL_MAP = {
     "nano_banana": ("Nano Banana", "Image"),
     "kling-o1": ("Kling O1", "Image"),
     "sora2_video": ("Sora 2", "Video"),
+    "soul_cinematic": ("Higgsfield Soul (Cinematic)", "Image"),
+    "seedance_2_0": ("Seedance 2.0", "Video"),
+    "seedance_2_5": ("Seedance 2.5", "Video"),
+    "nano-banana-pro": ("Nano Banana Pro", "Image"),
+    "nano_banana_pro": ("Nano Banana Pro", "Image"),
     "sora_2": ("Sora 2", "Video"),
     "veo3_video": ("Veo 3", "Video"),
     "wan_2_5": ("Wan 2.5", "Video"),
@@ -88,12 +99,20 @@ def tool_type(r):
     layer = r.get("asset_layer")
     if src == "prompt_bank":
         return "Camera Movement Prompt"
+    is_preset = r.get("record_type") == "preset_effect"
     if sec == "motion":
-        return "Motion Effect Preset"
+        return "Motion Effect Preset" if is_preset else "Motion Effect Prompt"
     if sec == "viral-presets":
-        return "Viral Preset"
+        return "Viral Preset" if is_preset else "Viral Preset Prompt"
     if sec == "mixed-media-presets":
-        return "Mixed Media Preset"
+        return "Mixed Media Preset" if is_preset else "Mixed Media Prompt"
+    if src == "flat_payload":
+        m, kind = norm_model(r.get("recreate_model") or mdl)
+        if (r.get("mode") or "") == "image" or kind == "Image":
+            return "Image Generation"
+        if (r.get("mode") or "") in ("video", "scene") or kind == "Video":
+            return "Video Generation"
+        return "Lesson / Course Prompt"
     if layer == "Image":
         return "Image Generation"
     if layer == "Video":
@@ -213,10 +232,12 @@ for r in rows:
             continue
         if UIISH.search(t) and w < 30:
             continue
-    if w < 6:
+    # structured sources label the field as a prompt, so trust short ones;
+    # inferred sources still need enough text to be worth keeping
+    if w < (4 if src in ("job_payload", "flat_payload", "prompt_bank", "recreate_link") else 6):
         continue
     # confidence
-    if src in ("job_payload", "recreate_link", "prompt_bank"):
+    if src in ("job_payload", "flat_payload", "recreate_link", "prompt_bank"):
         conf = "High"
     elif looks_like_prompt(t) and classify(t) == "prompt":
         conf = "High"
@@ -229,8 +250,8 @@ for r in rows:
 
 # dedupe: keep richest record per normalised prompt
 best = {}
-order = {"job_payload": 0, "prompt_bank": 1, "recreate_link": 2, "figure_caption": 3,
-         "article_body": 4, "catalog_page": 5}
+order = {"job_payload": 0, "flat_payload": 0, "prompt_bank": 1, "recreate_link": 2,
+         "figure_caption": 3, "article_body": 4, "catalog_page": 5}
 for r in clean:
     if r["record_type"] == "preset_effect":
         key = ("preset", (r.get("name") or "").lower(), r.get("model_or_effect"))
@@ -278,6 +299,19 @@ for r in best.values():
         "quality": r.get("quality"),
         "badges": r.get("badges"),
         "media_url": r.get("media_url"),
+        "full_res_url": (r.get("full_res_url") or r.get("media_url")
+                          or r.get("poster_url")),
+        "poster_url": r.get("poster_url"),
+        "asset_type": r.get("asset_type"),
+        "media_pairing": (r.get("media_pairing")
+                          if (r.get("full_res_url") or r.get("media_url") or r.get("poster_url"))
+                          else None),
+        "extra_assets": r.get("extra_assets") or [],
+        "width": r.get("width"),
+        "height": r.get("height"),
+        "recreate_model": r.get("recreate_model"),
+        "lesson_title": r.get("lesson_title"),
+        "timestamp_in_lesson": r.get("start_seconds"),
         "source_url": r.get("source_url"),
         "site_section": r.get("site_section"),
         "extraction_source": r.get("extraction_source"),

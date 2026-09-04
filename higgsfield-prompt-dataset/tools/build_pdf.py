@@ -4,10 +4,69 @@ from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import (BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer,
-                                Table, TableStyle, PageBreak, KeepTogether)
+                                Table, TableStyle, PageBreak, KeepTogether, Image)
 from reportlab.lib.enums import TA_LEFT
 
 d = json.load(open("dataset.json"))
+
+# thumbnails, keyed by record, so each prompt can show what it produced
+import os, collections as _c
+import assets as _A
+_thumbs = _c.defaultdict(list)
+try:
+    for _m in json.load(open("assets/manifest.json")):
+        if _m.get("thumb_path") and os.path.exists(os.path.join("assets", _m["thumb_path"])):
+            _thumbs[_m["record_id"]].append(os.path.join("assets", _m["thumb_path"]))
+except FileNotFoundError:
+    pass
+
+def thumbs_for(r, n=3):
+    return sorted(_thumbs.get(_A.record_id(r), []))[:n]
+
+_PDFCACHE = "assets/pdfthumbs"
+os.makedirs(_PDFCACHE, exist_ok=True)
+
+def _pdf_jpeg(src, box=190):
+    """ReportLab embeds a JPEG as DCTDecode (bytes pass straight through) but re-encodes
+    anything else as raw RGB -- which made the first build 215 MB. So downscale each
+    thumbnail to a small JPEG once and hand ReportLab that."""
+    dst = os.path.join(_PDFCACHE, os.path.basename(src).replace(".webp", ".jpg"))
+    if os.path.exists(dst) and os.path.getsize(dst) > 200:
+        return dst
+    try:
+        from PIL import Image as PILImage
+        im = PILImage.open(src).convert("RGB")
+        if im.width > box:
+            im = im.resize((box, max(1, round(im.height * box / im.width))), PILImage.LANCZOS)
+        im.save(dst, "JPEG", quality=62, optimize=True)
+        return dst
+    except Exception:
+        return None
+
+def shot_strip(paths, cell_mm=26):
+    """A row of thumbnails sized in mm, or None."""
+    from reportlab.lib.utils import ImageReader
+    imgs = []
+    for p0 in paths:
+        p = _pdf_jpeg(p0)
+        if not p:
+            continue
+        try:
+            iw, ih = ImageReader(p).getSize()
+            h = cell_mm * mm * (ih / iw) if iw else cell_mm * mm
+            h = min(h, cell_mm * 1.35 * mm)
+            imgs.append(Image(p, width=cell_mm * mm, height=h))
+        except Exception:
+            continue
+    if not imgs:
+        return None
+    t = Table([imgs], colWidths=[cell_mm * mm] * len(imgs), hAlign="LEFT")
+    t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
+                           ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                           ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                           ("TOPPADDING", (0, 0), (-1, -1), 0),
+                           ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+    return t
 INK = colors.HexColor("#111827"); MUT = colors.HexColor("#6B7280")
 ACC = colors.HexColor("#4F46E5"); LINE = colors.HexColor("#E5E7EB")
 BG = colors.HexColor("#F9FAFB")
@@ -102,8 +161,10 @@ A(PageBreak())
 
 # ---- catalogue section ----
 A(Paragraph("2. Prompt catalogue", S["h2"]))
-A(Paragraph("Records are grouped by tool type, then ordered by prompt length. Long prompts are "
-            "truncated for print; the CSV and Excel exports carry the complete text.", S["body"]))
+A(Paragraph("Records are grouped by tool type, then ordered by prompt length. Each entry shows the "
+            "sample it generated. Long prompts are truncated for print; the CSV and Excel exports "
+            "carry the complete text, and <b>tools/download_assets.py</b> fetches the full-resolution "
+            "originals.", S["body"]))
 
 bytool = collections.defaultdict(list)
 for r in d:
@@ -117,6 +178,9 @@ for tool in sorted(bytool, key=lambda k: -len(bytool[k])):
         bits = [b for b in [r.get("model_or_effect"), r.get("generation_style"),
                             r.get("visual_subject")] if b]
         blk = [Paragraph(esc(head, 110), S["h3"])]
+        strip = shot_strip(thumbs_for(r))
+        if strip is not None:
+            blk.append(strip)
         if r.get("prompt_text"):
             blk.append(Paragraph(esc(r["prompt_text"], 1400), S["prompt"]))
         if r.get("description"):

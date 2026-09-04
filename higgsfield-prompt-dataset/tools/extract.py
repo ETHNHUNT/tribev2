@@ -27,6 +27,9 @@ def js_strings(p):
                     if nxt=='u':
                         try: buf.append(chr(int(p[j+2:j+6],16))); j+=6; continue
                         except Exception: buf.append(nxt); j+=2; continue
+                    if nxt=='x':
+                        try: buf.append(chr(int(p[j+2:j+4],16))); j+=4; continue
+                        except Exception: buf.append(nxt); j+=2; continue
                     buf.append(esc.get(nxt,nxt)); j+=2; continue
                 if d == '"': break
                 buf.append(d); j+=1

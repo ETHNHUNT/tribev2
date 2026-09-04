@@ -12,6 +12,11 @@ COLS = [("record_type","Record Type",14),("name","Name",26),("prompt_text","Prom
         ("preset_name","Preset",18),("aspect_ratio","Aspect Ratio",12),
         ("duration_sec","Duration (s)",12),("quality","Quality",10),("badges","Badges",22),
         ("word_count","Words",8),("char_count","Chars",8),("confidence","Confidence",12),
+        ("asset_count","Assets",8),("asset_type","Asset Type",12),
+        ("thumb_path","Thumbnail (repo path)",34),("full_res_url","Full-Res Asset URL",52),
+        ("poster_url","Poster URL",46),("media_pairing","Asset Pairing",14),
+        ("recreate_model","Recreate Model",20),("lesson_title","Lesson",30),
+        ("timestamp_in_lesson","Lesson Ts (s)",12),
         ("site_section","Site Section",18),("extraction_source","Extraction Source",18),
         ("media_url","Sample Media URL",42),("source_url","Source Page URL",52)]
 

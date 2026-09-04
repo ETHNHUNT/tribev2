@@ -2,7 +2,7 @@ import re, os, glob, html, sys
 sys.path.insert(0, '.')
 import crawl
 
-known = set(u.strip() for u in open('known2.txt') if u.strip())
+known = set(u.strip() for u in open('known4.txt') if u.strip())
 found = set()
 for f in glob.glob('pages/*.html'):
     h = open(f, encoding='utf-8', errors='replace').read()
